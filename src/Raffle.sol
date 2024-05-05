@@ -20,8 +20,8 @@
 // view & pure functions
 
 /*
-  *@description Checkpoint at 4h 20mins of Patrick Collins Solidity Course
-  *@description https://youtu.be/sas02qSFZ74?feature=shared&t=15565
+ *@description Checkpoint at 4h 20mins of Patrick Collins Solidity Course
+ *@description https://youtu.be/sas02qSFZ74?feature=shared&t=15565
  */
 
 // SPDX-License-Identifier: MIT
@@ -34,25 +34,25 @@ pragma solidity ^0.8.19;
 import {VRFCoordinatorV2Interface} from "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import {VRFConsumerBaseV2} from "@chainlink/contracts/src/v0.8/vrf/VRFConsumerBaseV2.sol";
 
-
 contract Raffle is VRFConsumerBaseV2 {
-
     error Raffle__NotEnoughEthSent();
     error Raffle__TransferFailed();
     error Raffle__RaffleNotOpen();
     error Raffle__UpkeepNotNeeded(
         uint256 currentBalance,
-        uint256 numPlayers, 
+        uint256 numPlayers,
         uint256 raffleState
     );
 
     /* Type declarations */
     enum RaffleState {
-        OPEN,       // 0
+        OPEN, // 0
         CALCULATING // 1
     }
 
-    /** State Variables **/
+    /**
+     * State Variables *
+     */
     uint16 private constant REQUEST_CONFIRMATIONS = 3;
     uint32 private constant NUM_WORDS = 1;
 
@@ -71,6 +71,7 @@ contract Raffle is VRFConsumerBaseV2 {
 
     event RaffleEnter(address indexed player);
     event PickedWinner(address indexed winner);
+    event RequestedRaffleWinner(uint256 indexed requestId);
 
     constructor(
         uint256 entranceFee,
@@ -96,7 +97,8 @@ contract Raffle is VRFConsumerBaseV2 {
         if (msg.value < i_entranceFee) {
             revert Raffle__NotEnoughEthSent();
         }
-        if (s_raffleState != RaffleState.OPEN) { // can only enter the raffle if raffle is not open
+        if (s_raffleState != RaffleState.OPEN) {
+            // can only enter the raffle if raffle is not open
             revert Raffle__RaffleNotOpen();
         }
         s_players.push(payable(msg.sender));
@@ -105,23 +107,22 @@ contract Raffle is VRFConsumerBaseV2 {
         emit RaffleEnter(msg.sender);
     }
 
-    /** 
-      *@dev This is the function that the Chainlink Automation nodes call
-      * to see if it's time to perform an upkeep
-      * The following should be true for this to return true:
-      * 1. The time interval has passed between raffle runs
-      * 2. The raffle is in the OPEN state
-      * 3. The contract has ETH (aka, players)
-      * 4. (Implicit) The subscription is funded with LINK
-    */
-
+    /**
+     * @dev This is the function that the Chainlink Automation nodes call
+     * to see if it's time to perform an upkeep
+     * The following should be true for this to return true:
+     * 1. The time interval has passed between raffle runs
+     * 2. The raffle is in the OPEN state
+     * 3. The contract has ETH (aka, players)
+     * 4. (Implicit) The subscription is funded with LINK
+     */
     function checkUpkeep(
         bytes memory /* checkData */
     ) public view returns (bool upkeepNeeded, bytes memory /* performData */) {
-        bool timeHasPassed = (block.timestamp - s_lastTimeStamp) >= i_interval;
+        bool timeHasPassed = ((block.timestamp - s_lastTimeStamp) > i_interval);
         bool isOpen = RaffleState.OPEN == s_raffleState;
-        bool hasBalance = address(this).balance > 0;
         bool hasPlayers = s_players.length > 0;
+        bool hasBalance = address(this).balance > 0;
         upkeepNeeded = (timeHasPassed && isOpen && hasBalance && hasPlayers);
         return (upkeepNeeded, "0x0");
     }
@@ -131,7 +132,7 @@ contract Raffle is VRFConsumerBaseV2 {
     // 3. Be automatically called
     function performUpkeep(bytes calldata /* performData */) external {
         (bool upkeepNeeded, ) = checkUpkeep("");
-        if(!upkeepNeeded) {
+        if (!upkeepNeeded) {
             revert Raffle__UpkeepNotNeeded(
                 address(this).balance,
                 s_players.length,
@@ -142,25 +143,27 @@ contract Raffle is VRFConsumerBaseV2 {
         // Get a random winner
         // 1. Request the RNG from chainlink
         // 2. Get the random number
-        i_vrfCoordinator.requestRandomWords( // COORDINATOR: address to chainlink VRF. Different from chain to chain
-            i_gasLane, // gas lane
-            i_subscriptionId, // id of subscription contract you have funded on chainlink
-            REQUEST_CONFIRMATIONS, // number of block confirmations
-            i_callbackGasLimit,
-            NUM_WORDS
-        );
+        uint256 requestId = i_vrfCoordinator.requestRandomWords( // COORDINATOR: address to chainlink VRF. Different from chain to chain
+                i_gasLane, // gas lane
+                i_subscriptionId, // id of subscription contract you have funded on chainlink
+                REQUEST_CONFIRMATIONS, // number of block confirmations
+                i_callbackGasLimit,
+                NUM_WORDS
+            );
+        emit RequestedRaffleWinner(requestId); // redundant because in VRFCoordinatorV2Mock theres actually already an event emitting the requestId
     }
 
     function fulfillRandomWords(
-        uint256 /* requestId */,
+        uint256 requestId,
         uint256[] memory randomWords
-    ) internal override { /* override is required as fulfillRandomWords is a virtual function -> any contract that inheirts from the contract containing the virtual function can provide its own implementation of the function */
+    ) internal override {
+        /* override is required as fulfillRandomWords is a virtual function -> any contract that inheirts from the contract containing the virtual function can provide its own implementation of the function */
         // s_players = 10
         // rng = 10
         // 12 % 10 = 2
         // 1231221234121242 % 10 = 2
 
-        // Checks 
+        // Checks
         // Effects (Our own contract)
         uint256 indexOfWinner = randomWords[0] % s_players.length;
         address payable winner = s_players[indexOfWinner];
@@ -171,16 +174,36 @@ contract Raffle is VRFConsumerBaseV2 {
         emit PickedWinner(winner);
 
         // Interactions (Other contrats)
-        (bool success, ) = s_recentWinner.call{value:address(this).balance}("");
-        if(!success) {
+        (bool success, ) = winner.call{value: address(this).balance}("");
+        if (!success) {
             revert Raffle__TransferFailed();
         }
-
     }
 
-    /**  Getter Function **/
-
-    function getEntranceFee() external view returns(uint256) {
+    /**
+     * Getter Function *
+     */
+    function getEntranceFee() public view returns (uint256) {
         return i_entranceFee;
+    }
+
+    function getRaffleState() public view returns (RaffleState) {
+        return s_raffleState;
+    }
+
+    function getPlayer(uint256 indexOfPlayer) public view returns (address) {
+        return s_players[indexOfPlayer];
+    }
+
+    function getRecentWinner() public view returns (address) {
+        return s_recentWinner;
+    }
+
+    function getLengthOfPlayers() public view returns (uint256) {
+        return s_players.length;
+    }
+
+    function getLastTimestamp() public view returns (uint256) {
+        return s_lastTimeStamp;
     }
 }
