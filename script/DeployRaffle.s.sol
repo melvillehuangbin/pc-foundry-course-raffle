@@ -8,8 +8,7 @@ import {Raffle} from "../src/Raffle.sol";
 import {CreateSubscription, FundSubscription, AddConsumer} from "./Interactions.s.sol";
 
 contract DeployRaffle is Script {
-
-    function run() external returns(Raffle, HelperConfig) {
+    function run() external returns (Raffle, HelperConfig) {
         HelperConfig helperConfig = new HelperConfig();
         (
             uint256 entranceFee,
@@ -18,18 +17,27 @@ contract DeployRaffle is Script {
             bytes32 gasLane, // key hash
             uint64 subscriptionId,
             uint32 callbackGasLimit,
-            address link
+            address link,
+            uint256 deployerKey
         ) = helperConfig.activeNetworkConfig();
 
         // if subscriptionId not provided, create and fund a new subscription
-        if(subscriptionId == 0) {
+        if (subscriptionId == 0) {
             // Create new subscription
             CreateSubscription createSubscription = new CreateSubscription();
-            subscriptionId = createSubscription.createSubscription(vrfCoordinator);
+            subscriptionId = createSubscription.createSubscription(
+                vrfCoordinator,
+                deployerKey
+            );
 
             // Fund new subscription
             FundSubscription fundSubscription = new FundSubscription();
-            fundSubscription.fundSubscription(vrfCoordinator, subscriptionId, link);
+            fundSubscription.fundSubscription(
+                vrfCoordinator,
+                subscriptionId,
+                link,
+                deployerKey
+            );
         }
 
         vm.startBroadcast();
@@ -45,7 +53,12 @@ contract DeployRaffle is Script {
 
         // Add newly created raffle to a list of consumers
         AddConsumer addConsumer = new AddConsumer();
-        addConsumer.addConsumer(vrfCoordinator, subscriptionId, address(raffle));
+        addConsumer.addConsumer(
+            vrfCoordinator,
+            subscriptionId,
+            address(raffle),
+            deployerKey
+        );
 
         return (raffle, helperConfig);
     }

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+// unit test
+
 pragma solidity ^0.8.19;
 
 import {Test, console} from "../lib/forge-std/src/Test.sol";
@@ -12,16 +14,17 @@ import {VRFCoordinatorV2Mock} from "./mocks/VRFCoordinatorV2Mock.sol";
 contract RaffleTest is Test {
     event RaffleEnter(address indexed player);
 
-    Raffle raffle;
-    HelperConfig helperConfig;
+    Raffle public raffle;
+    HelperConfig public helperConfig;
 
-    uint256 entranceFee;
-    uint256 interval;
-    address vrfCoordinator;
-    bytes32 gasLane; // key hash
-    uint64 subscriptionId;
-    uint32 callbackGasLimit;
-    address link;
+    uint256 public entranceFee;
+    uint256 public interval;
+    address public vrfCoordinator;
+    bytes32 public gasLane; // key hash
+    uint64 public subscriptionId;
+    uint32 public callbackGasLimit;
+    address public link;
+    uint256 public deployerKey;
 
     address public PLAYER = makeAddr("player");
     uint256 public STARTING_BALANCE = 10 ether;
@@ -30,13 +33,14 @@ contract RaffleTest is Test {
         DeployRaffle deployer = new DeployRaffle();
         (raffle, helperConfig) = deployer.run();
         (
-            uint256 entranceFee,
-            uint256 interval,
-            address vrfCoordinator,
-            bytes32 gasLane, // key hash
-            uint64 subscriptionId,
-            uint32 callbackGasLimit,
-            address link
+            entranceFee,
+            interval,
+            vrfCoordinator,
+            gasLane, // key hash
+            subscriptionId,
+            callbackGasLimit,
+            link,
+            deployerKey
         ) = helperConfig.activeNetworkConfig();
         vm.deal(PLAYER, STARTING_BALANCE);
     }
@@ -55,7 +59,7 @@ contract RaffleTest is Test {
 
     function testRaffleRecordsPlayerWhenTheyEnter() public {
         vm.prank(PLAYER);
-        raffle.enterRaffle{value: entranceFee + 0.01 ether}();
+        raffle.enterRaffle{value: entranceFee}();
         address playerRecorded = raffle.getPlayer(0);
         assert(playerRecorded == PLAYER);
     }
@@ -64,19 +68,19 @@ contract RaffleTest is Test {
         vm.prank(PLAYER);
         vm.expectEmit(true, false, false, false, address(raffle));
         emit RaffleEnter(PLAYER);
-        raffle.enterRaffle{value: entranceFee + 0.01 ether}();
+        raffle.enterRaffle{value: entranceFee}();
     }
 
     function testCantEnterWhenRaffleIsCalculating() public {
         vm.prank(PLAYER);
-        raffle.enterRaffle{value: entranceFee + 0.01 ether}();
+        raffle.enterRaffle{value: entranceFee}();
         vm.warp(block.timestamp + interval + 40);
         vm.roll(block.number + 1);
         raffle.performUpkeep("");
 
         vm.expectRevert(Raffle.Raffle__RaffleNotOpen.selector);
         vm.prank(PLAYER);
-        raffle.enterRaffle{value: entranceFee + 0.01 ether}();
+        raffle.enterRaffle{value: entranceFee}();
     }
 
     /////////////////
@@ -98,7 +102,7 @@ contract RaffleTest is Test {
     function testCheckUpkeepReturnsFalseIfRaffleNotOpen() public {
         // Arrange
         vm.prank(PLAYER);
-        raffle.enterRaffle{value: entranceFee + 0.01 ether}();
+        raffle.enterRaffle{value: entranceFee}();
         vm.warp(block.timestamp + interval + 40);
         vm.roll(block.number + 1);
         raffle.performUpkeep("");
@@ -120,7 +124,7 @@ contract RaffleTest is Test {
     function testPerformUpkeepCanOnlyRunIfCheckUpkeepIsTrue() public {
         // Arrange
         vm.prank(PLAYER);
-        raffle.enterRaffle{value: entranceFee + 0.01 ether}();
+        raffle.enterRaffle{value: entranceFee}();
         vm.warp(block.timestamp + interval + 40);
         vm.roll(block.number + 1);
 
@@ -150,7 +154,7 @@ contract RaffleTest is Test {
 
     modifier raffleEnteredAndTimePassed() {
         vm.prank(PLAYER);
-        raffle.enterRaffle{value: entranceFee + 0.01 ether}();
+        raffle.enterRaffle{value: entranceFee}();
         vm.warp(block.timestamp + interval + 40);
         vm.roll(block.number + 1);
         _;
@@ -197,8 +201,8 @@ contract RaffleTest is Test {
             i++
         ) {
             address player = address(uint160(i));
-            hoax(player, 1 ether);
-            raffle.enterRaffle{value: entranceFee + 1 ether}();
+            hoax(player, STARTING_BALANCE);
+            raffle.enterRaffle{value: entranceFee}();
         }
 
         uint256 prize = entranceFee * (additionalEntrants + 1);
@@ -224,7 +228,7 @@ contract RaffleTest is Test {
         assert(previousTimeStamp < raffle.getLastTimestamp());
         assert(
             raffle.getRecentWinner().balance ==
-                STARTING_BALANCE + prize - entranceFee - 0.01 ether
+                STARTING_BALANCE + prize - entranceFee
         );
     }
 }
